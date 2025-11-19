@@ -1,0 +1,5 @@
+{
+  "name": "NeuralVis: AI Math Simulator",
+  "description": "A high-performance, interactive machine learning simulator that visualizes the mathematics behind Linear Regression and Neural Networks. Features step-by-step execution, real-time visualization, and AI-powered concept explanations.",
+  "requestFramePermissions": []
+}
