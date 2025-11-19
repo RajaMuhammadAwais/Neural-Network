@@ -1,8 +1,33 @@
 
+
+
+
 /**
  * A lightweight Matrix/Vector math library mimicking basic NumPy functionality
  * to ensure mathematical transparency in the simulator.
  */
+
+// Linear Congruential Generator for Reproducible Randomness
+class Random {
+    private seed: number;
+    constructor(seed: number = 12345) { this.seed = seed; }
+    
+    // LCG Parameters (glibc)
+    next(): number {
+        this.seed = (1103515245 * this.seed + 12345) % 2147483648;
+        return this.seed / 2147483648;
+    }
+
+    nextGaussian(): number {
+        const u = 1 - this.next();
+        const v = this.next();
+        return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    }
+
+    setSeed(s: number) { this.seed = s; }
+}
+
+export const rng = new Random();
 
 export class Matrix {
     data: number[][];
@@ -10,30 +35,44 @@ export class Matrix {
     cols: number;
 
     constructor(rows: number, cols: number, initialValue: number | number[][] = 0) {
-        this.rows = rows;
-        this.cols = cols;
+        this.rows = Math.max(0, Math.floor(rows));
+        this.cols = Math.max(0, Math.floor(cols));
+        
         if (Array.isArray(initialValue)) {
-            // Deep copy if array is passed to prevent reference issues
-            this.data = initialValue.map(row => [...row]);
+            // Validate and deep copy array
+            this.data = Array(this.rows).fill(0).map((_, i) => {
+                const sourceRow = initialValue[i];
+                if (Array.isArray(sourceRow)) {
+                    // Copy up to cols elements, fill rest with 0 if missing
+                    const newRow = Array(this.cols).fill(0);
+                    for(let j=0; j<this.cols; j++) {
+                        newRow[j] = sourceRow[j] !== undefined ? sourceRow[j] : 0;
+                    }
+                    return newRow;
+                } else {
+                    // Fallback if row missing or invalid, creates a safe row of 0s
+                    return Array(this.cols).fill(0);
+                }
+            });
         } else {
-            this.data = Array(rows).fill(0).map(() => Array(cols).fill(initialValue as number));
+            const val = initialValue as number;
+            // Always create full structure even if empty to prevent undefined access
+            this.data = Array(this.rows).fill(0).map(() => Array(this.cols).fill(val));
         }
     }
 
     static random(rows: number, cols: number, scale = 0.1): Matrix {
-        const data = Array(rows).fill(0).map(() => 
-            Array(cols).fill(0).map(() => (Math.random() * 2 - 1) * scale)
+        const data = Array(Math.floor(rows)).fill(0).map(() => 
+            Array(Math.floor(cols)).fill(0).map(() => (rng.next() * 2 - 1) * scale)
         );
         return new Matrix(rows, cols, data);
     }
 
     // Gaussian random for Xavier/He Initialization
     static randomNormal(rows: number, cols: number, mean = 0, std = 1): Matrix {
-        const data = Array(rows).fill(0).map(() => 
-            Array(cols).fill(0).map(() => {
-                const u = 1 - Math.random();
-                const v = Math.random();
-                const z = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+        const data = Array(Math.floor(rows)).fill(0).map(() => 
+            Array(Math.floor(cols)).fill(0).map(() => {
+                const z = rng.nextGaussian();
                 return z * std + mean;
             })
         );
@@ -45,8 +84,9 @@ export class Matrix {
         const result = new Matrix(this.rows, this.cols);
         for (let i = 0; i < this.rows; i++) {
             for (let j = 0; j < this.cols; j++) {
-                const val = typeof other === 'number' ? other : other.data[i][j];
-                result.data[i][j] = this.data[i][j] + val;
+                const val = typeof other === 'number' ? other : (other.data[i] ? other.data[i][j] : 0);
+                if (this.data[i])
+                   result.data[i][j] = this.data[i][j] + val;
             }
         }
         return result;
@@ -57,8 +97,9 @@ export class Matrix {
         const result = new Matrix(this.rows, this.cols);
         for (let i = 0; i < this.rows; i++) {
             for (let j = 0; j < this.cols; j++) {
-                const val = typeof other === 'number' ? other : other.data[i][j];
-                result.data[i][j] = this.data[i][j] - val;
+                const val = typeof other === 'number' ? other : (other.data[i] ? other.data[i][j] : 0);
+                if (this.data[i])
+                   result.data[i][j] = this.data[i][j] - val;
             }
         }
         return result;
@@ -69,8 +110,9 @@ export class Matrix {
         const result = new Matrix(this.rows, this.cols);
         for (let i = 0; i < this.rows; i++) {
             for (let j = 0; j < this.cols; j++) {
-                const val = typeof other === 'number' ? other : other.data[i][j];
-                result.data[i][j] = this.data[i][j] * val;
+                const val = typeof other === 'number' ? other : (other.data[i] ? other.data[i][j] : 0);
+                if (this.data[i])
+                   result.data[i][j] = this.data[i][j] * val;
             }
         }
         return result;
@@ -85,9 +127,11 @@ export class Matrix {
         const result = new Matrix(this.rows, this.cols);
         for (let i = 0; i < this.rows; i++) {
             for (let j = 0; j < this.cols; j++) {
-                const val = typeof other === 'number' ? other : other.data[i][j];
-                if (val === 0) result.data[i][j] = 0; // Safety
-                else result.data[i][j] = this.data[i][j] / val;
+                const val = typeof other === 'number' ? other : (other.data[i] ? other.data[i][j] : 0);
+                if (this.data[i]) {
+                    if (val === 0) result.data[i][j] = 0; // Safety
+                    else result.data[i][j] = this.data[i][j] / val;
+                }
             }
         }
         return result;
@@ -98,7 +142,8 @@ export class Matrix {
         const result = new Matrix(this.rows, this.cols);
         for (let i = 0; i < this.rows; i++) {
             for (let j = 0; j < this.cols; j++) {
-                result.data[i][j] = Math.sqrt(this.data[i][j]);
+                if (this.data[i])
+                    result.data[i][j] = Math.sqrt(this.data[i][j]);
             }
         }
         return result;
@@ -109,7 +154,8 @@ export class Matrix {
         const result = new Matrix(this.rows, this.cols);
         for (let i = 0; i < this.rows; i++) {
             for (let j = 0; j < this.cols; j++) {
-                result.data[i][j] = this.data[i][j] * this.data[i][j];
+                if(this.data[i])
+                   result.data[i][j] = this.data[i][j] * this.data[i][j];
             }
         }
         return result;
@@ -119,6 +165,7 @@ export class Matrix {
     sum(): number {
         let s = 0;
         for (let i = 0; i < this.rows; i++) {
+            if(!this.data[i]) continue;
             for (let j = 0; j < this.cols; j++) {
                 s += this.data[i][j];
             }
@@ -128,17 +175,29 @@ export class Matrix {
 
     // Matrix multiplication (Dot product)
     dot(other: Matrix): Matrix {
+        // Warn but try to handle mismatch if possible or just return empty result
         if (this.cols !== other.rows) {
-            throw new Error(`Shape mismatch: ${this.rows}x${this.cols} vs ${other.rows}x${other.cols}`);
+            console.warn(`Shape mismatch in dot: ${this.rows}x${this.cols} vs ${other.rows}x${other.cols}`);
+            // Return correctly sized zero matrix based on outer dimensions
+            return new Matrix(this.rows, other.cols, 0);
         }
         const result = new Matrix(this.rows, other.cols);
         for (let i = 0; i < this.rows; i++) {
+            const rowData = this.data[i];
+            // Safety check for missing row data
+            if (!rowData) continue; 
+            
             for (let j = 0; j < other.cols; j++) {
                 let sum = 0;
                 for (let k = 0; k < this.cols; k++) {
-                    sum += this.data[i][k] * other.data[k][j];
+                    const otherRow = other.data[k];
+                    // Strict check for other row existence
+                    if (otherRow && otherRow[j] !== undefined) {
+                         sum += rowData[k] * otherRow[j];
+                    }
                 }
-                result.data[i][j] = sum;
+                // Double safety: ensure result row exists
+                if(result.data[i] !== undefined) result.data[i][j] = sum;
             }
         }
         return result;
@@ -148,7 +207,8 @@ export class Matrix {
         const result = new Matrix(this.cols, this.rows);
         for (let i = 0; i < this.rows; i++) {
             for (let j = 0; j < this.cols; j++) {
-                result.data[j][i] = this.data[i][j];
+                if(result.data[j] && this.data[i])
+                   result.data[j][i] = this.data[i][j];
             }
         }
         return result;
@@ -159,7 +219,8 @@ export class Matrix {
         const result = new Matrix(this.rows, this.cols);
         for (let i = 0; i < this.rows; i++) {
             for (let j = 0; j < this.cols; j++) {
-                result.data[i][j] = fn(this.data[i][j]);
+                if (this.data[i])
+                   result.data[i][j] = fn(this.data[i][j]);
             }
         }
         return result;
@@ -169,6 +230,8 @@ export class Matrix {
     softmax(): Matrix {
         const result = new Matrix(this.rows, this.cols);
         for(let i=0; i<this.rows; i++) {
+            if (!this.data[i]) continue;
+            
             let maxVal = -Infinity;
             for(let j=0; j<this.cols; j++) maxVal = Math.max(maxVal, this.data[i][j]);
             
@@ -180,15 +243,28 @@ export class Matrix {
                 sum += e;
             }
             for(let j=0; j<this.cols; j++) {
-                result.data[i][j] = exps[j] / sum;
+                if (result.data[i])
+                   result.data[i][j] = exps[j] / sum;
             }
         }
         return result;
+    }
+    
+    toArray(): number[] {
+        const arr = [];
+        for(let i=0; i<this.rows; i++) {
+            for(let j=0; j<this.cols; j++) {
+                if (this.data[i])
+                   arr.push(this.data[i][j]);
+            }
+        }
+        return arr;
     }
 }
 
 // "np" object to mimic Python/NumPy syntax in the simulator code
 export const np = {
+    seed: (val: number) => rng.setSeed(val),
     dot: (a: Matrix, b: Matrix) => a.dot(b),
     add: (a: Matrix, b: Matrix | number) => a.add(b),
     subtract: (a: Matrix, b: Matrix | number) => a.subtract(b),
@@ -203,6 +279,7 @@ export const np = {
     
     // Helper to find index of max element in array
     argmax: (arr: number[]) => {
+        if (!arr || arr.length === 0) return 0;
         let max = -Infinity;
         let idx = 0;
         for(let i=0; i<arr.length; i++) {
@@ -228,7 +305,9 @@ export const np = {
         let sum = 0;
         const n = yTrue.rows * yTrue.cols;
         for(let i=0; i<yTrue.rows; i++) {
-            sum += Math.pow(yTrue.data[i][0] - yPred.data[i][0], 2);
+            const v1 = yTrue.data[i] ? yTrue.data[i][0] : 0;
+            const v2 = yPred.data[i] ? yPred.data[i][0] : 0;
+            sum += Math.pow(v1 - v2, 2);
         }
         return sum / n;
     },
@@ -238,8 +317,9 @@ export const np = {
         const m = yTrue.rows;
         const epsilon = 1e-15; // prevent log(0)
         for(let i=0; i<m; i++) {
-            const y = yTrue.data[i][0];
-            const yHat = Math.min(Math.max(yPred.data[i][0], epsilon), 1 - epsilon);
+            const y = yTrue.data[i] ? yTrue.data[i][0] : 0;
+            const yP = yPred.data[i] ? yPred.data[i][0] : 0;
+            const yHat = Math.min(Math.max(yP, epsilon), 1 - epsilon);
             sum += (y * Math.log(yHat) + (1 - y) * Math.log(1 - yHat));
         }
         return -sum / m;

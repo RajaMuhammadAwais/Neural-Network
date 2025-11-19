@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Matrix } from '../utils/math';
 import { MathDisplay } from '../components/MathDisplay';
@@ -42,15 +43,16 @@ export const CNNModule: React.FC = () => {
   // Toggle Pixel
   const togglePixel = (r: number, c: number) => {
       const newGrid = [...inputGrid];
+      if (!newGrid[r]) return; // Safety check
       newGrid[r] = [...newGrid[r]];
       // In MNIST mode, make it "brush" like
       if (gridMode === 'mnist') {
            newGrid[r][c] = 1;
            // Simple brush effect
-           if(r+1 < newGrid.length) newGrid[r+1][c] = Math.max(newGrid[r+1][c], 0.5);
-           if(r-1 >= 0) newGrid[r-1][c] = Math.max(newGrid[r-1][c], 0.5);
-           if(c+1 < newGrid[0].length) newGrid[r][c+1] = Math.max(newGrid[r][c+1], 0.5);
-           if(c-1 >= 0) newGrid[r][c-1] = Math.max(newGrid[r][c-1], 0.5);
+           if(r+1 < newGrid.length && newGrid[r+1]) newGrid[r+1][c] = Math.max(newGrid[r+1][c], 0.5);
+           if(r-1 >= 0 && newGrid[r-1]) newGrid[r-1][c] = Math.max(newGrid[r-1][c], 0.5);
+           if(newGrid[r] && c+1 < newGrid[0].length) newGrid[r][c+1] = Math.max(newGrid[r][c+1], 0.5);
+           if(newGrid[r] && c-1 >= 0) newGrid[r][c-1] = Math.max(newGrid[r][c-1], 0.5);
       } else {
            newGrid[r][c] = newGrid[r][c] === 0 ? 1 : 0;
       }
@@ -74,18 +76,25 @@ export const CNNModule: React.FC = () => {
 
   // Apply Convolution
   const featureMap = useMemo(() => {
-    if (inputGrid.length === 0) return [];
+    if (!inputGrid || inputGrid.length === 0) return [];
     const inRows = inputGrid.length;
-    const inCols = inputGrid[0].length;
+    const inCols = inputGrid[0]?.length || 0;
+    if (inCols === 0) return [];
+
+    if (!kernel || kernel.length === 0) return [];
     const kRows = kernel.length;
-    const kCols = kernel[0].length;
+    // Safe access for kernel cols
+    const kCols = kernel[0]?.length || 0;
+    if (kCols === 0) return [];
     
     const outRows = Math.floor((inRows - kRows) / stride) + 1;
     const outCols = Math.floor((inCols - kCols) / stride) + 1;
     
     if (outRows <= 0 || outCols <= 0) return [];
 
-    const output = Array(outRows).fill(0).map(() => Array(outCols).fill(0));
+    // Initialize output array safely
+    const output: number[][] = [];
+    for(let i=0; i<outRows; i++) output.push(Array(outCols).fill(0));
 
     for(let i=0; i<outRows; i++) {
       for(let j=0; j<outCols; j++) {
@@ -94,11 +103,13 @@ export const CNNModule: React.FC = () => {
         const startC = j * stride;
         for(let ki=0; ki<kRows; ki++) {
           for(let kj=0; kj<kCols; kj++) {
-             if (inputGrid[startR+ki] && inputGrid[startR+ki][startC+kj] !== undefined)
-                sum += inputGrid[startR+ki][startC+kj] * kernel[ki][kj];
+             const rIdx = startR + ki;
+             const cIdx = startC + kj;
+             if (inputGrid[rIdx] && inputGrid[rIdx][cIdx] !== undefined && kernel[ki] && kernel[ki][kj] !== undefined)
+                sum += inputGrid[rIdx][cIdx] * kernel[ki][kj];
           }
         }
-        output[i][j] = sum;
+        if(output[i]) output[i][j] = sum;
       }
     }
     return output;
@@ -106,27 +117,32 @@ export const CNNModule: React.FC = () => {
 
   // Apply Max Pooling (2x2, stride 2)
   const pooledMap = useMemo(() => {
-      if (!showPooling || featureMap.length === 0) return [];
+      if (!showPooling || !featureMap || featureMap.length === 0) return [];
       const inRows = featureMap.length; 
-      const inCols = featureMap[0].length; 
+      const inCols = featureMap[0]?.length || 0; 
+      if (inCols === 0) return [];
+
       const outRows = Math.floor(inRows / 2);
       const outCols = Math.floor(inCols / 2);
       
       if (outRows <= 0 || outCols <= 0) return [];
 
-      const output = Array(outRows).fill(0).map(() => Array(outCols).fill(0));
+      const output: number[][] = [];
+      for(let i=0; i<outRows; i++) output.push(Array(outCols).fill(0));
       
       for(let i=0; i<outRows; i++) {
           for(let j=0; j<outCols; j++) {
               let maxVal = -Infinity;
               for(let r=0; r<2; r++) {
                   for(let c=0; c<2; c++) {
-                      if(featureMap[i*2 + r] && featureMap[i*2 + r][j*2 + c] !== undefined) {
-                        maxVal = Math.max(maxVal, featureMap[i*2 + r][j*2 + c]);
+                      const rIdx = i * 2 + r;
+                      const cIdx = j * 2 + c;
+                      if(featureMap[rIdx] && featureMap[rIdx][cIdx] !== undefined) {
+                        maxVal = Math.max(maxVal, featureMap[rIdx][cIdx]);
                       }
                   }
               }
-              output[i][j] = maxVal;
+              if(output[i]) output[i][j] = maxVal === -Infinity ? 0 : maxVal;
           }
       }
       return output;

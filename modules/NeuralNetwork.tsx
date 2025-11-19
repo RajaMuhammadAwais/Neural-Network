@@ -1,17 +1,23 @@
 
+
+
+
+
+// ... imports same as before ...
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Matrix, np } from '../utils/math';
-import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Cell, Tooltip, Legend } from 'recharts';
+import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Cell, Tooltip, Legend, LineChart, Line, BarChart, Bar } from 'recharts';
 import { MathDisplay } from '../components/MathDisplay';
-import { Play, Pause, SkipForward, RefreshCw, Layers, ShieldCheck, AlertTriangle, Settings2, FlaskConical, Save, BookOpen, Trash2, Zap, Activity, Gauge, ZoomIn, Grid } from 'lucide-react';
-import * as d3 from 'd3';
+import { Play, Pause, SkipForward, RefreshCw, Layers, ShieldCheck, AlertTriangle, Settings2, FlaskConical, Save, BookOpen, Trash2, Zap, Activity, Gauge, ZoomIn, Grid, Microscope } from 'lucide-react';
+import { select } from 'd3';
 import { ExperimentRecord, Optimizer } from '../types';
 
 type ActivationType = 'tanh' | 'relu' | 'sigmoid';
 type DataType = 'circle' | 'xor' | 'spiral';
 
 export const NeuralNetworkModule: React.FC = () => {
-  // --- State ---
+  // ... State ...
   const [allData, setAllData] = useState<{x: number, y: number, label: number, isTest: boolean}[]>([]);
   const [epoch, setEpoch] = useState(0);
   const [loss, setLoss] = useState(0);
@@ -27,11 +33,17 @@ export const NeuralNetworkModule: React.FC = () => {
   const [hiddenSize, setHiddenSize] = useState(4); // Dynamic Topology
   const [dataType, setDataType] = useState<DataType>('circle');
   const [optimizer, setOptimizer] = useState<Optimizer>('SGD');
+  const [seed, setSeed] = useState(12345);
 
   // New Simulation Controls
   const [speed, setSpeed] = useState(1); // Steps per frame
   const [zoom, setZoom] = useState(1);
   const [dataDensity, setDataDensity] = useState(100);
+
+  // Diagnostics
+  const [gradHistory, setGradHistory] = useState<{epoch: number, layer1: number, layer2: number}[]>([]);
+  const [weightDist, setWeightDist] = useState<{bin: string, count: number}[]>([]);
+  const [activeTab, setActiveTab] = useState<'visuals' | 'diagnostics'>('visuals');
 
   // Lab Notebook
   const [experiments, setExperiments] = useState<ExperimentRecord[]>([]);
@@ -61,16 +73,18 @@ export const NeuralNetworkModule: React.FC = () => {
       t: 0
   });
 
-  // --- Data Generation (Train/Test Split) ---
+  // ... (generateData, resetModel, handleHiddenSizeChange same as before) ...
   const generateData = useCallback(() => {
+    np.seed(seed); // Reproducibility
     const points = [];
     const N = dataDensity; // Use customizable density
     const splitIdx = Math.floor(N * 0.8); 
 
     if (dataType === 'circle') {
         for(let i=0; i<N; i++) {
-            const r = Math.random() * 0.5;
-            const theta = Math.random() * 2 * Math.PI;
+            // Fix: Correct parameters for randomNormal (rows, cols, mean, std) -> (1, 1, 0, 1)
+            const r = np.randomNormal(1, 1, 0, 1).data[0][0] * 0.5; // Seeded
+            const theta = Math.random() * 2 * Math.PI; 
             points.push({ x: r * Math.cos(theta), y: r * Math.sin(theta), label: 0, isTest: i >= splitIdx });
         }
         for(let i=0; i<N; i++) {
@@ -103,9 +117,10 @@ export const NeuralNetworkModule: React.FC = () => {
     }
     setAllData(points);
     resetModel(activation, hiddenSize);
-  }, [dataType, dataDensity]);
+  }, [dataType, dataDensity, seed]);
 
   const resetModel = (actType: ActivationType, hSize: number) => {
+    np.seed(seed + 1); // Different seed for weights
     if (actType === 'relu') {
         const std = Math.sqrt(2 / inputSize);
         W1.current = np.randomNormal(inputSize, hSize, 0, std);
@@ -130,11 +145,14 @@ export const NeuralNetworkModule: React.FC = () => {
     setTestAccuracy(0);
     setF1Score(0);
     setConfusionMatrix({ tp: 0, tn: 0, fp: 0, fn: 0 });
+    setGradHistory([]);
+    setWeightDist([]);
     setIsPlaying(false);
     
     setTimeout(() => {
         drawNetwork(hSize);
         drawDecisionBoundary();
+        updateWeightHist();
     }, 50);
   };
 
@@ -145,6 +163,7 @@ export const NeuralNetworkModule: React.FC = () => {
 
   useEffect(() => { generateData(); }, [generateData]);
 
+  // ... (applyOptimizer same as before) ...
   const applyOptimizer = (
       param: Matrix, grad: Matrix, 
       m: Matrix, v: Matrix, 
@@ -178,24 +197,29 @@ export const NeuralNetworkModule: React.FC = () => {
       return { newParam: param, newM: m, newV: v };
   };
 
-  // Core Math Step (No UI Updates)
-  const computeGradientStep = (dataPoints: typeof allData) => {
+  // ... (computeGradientStep same as before) ...
+  const computeGradientStep = (dataPoints: typeof allData): { loss: number, g1: number, g2: number } => {
      const trainData = dataPoints.filter(p => !p.isTest);
-     if (trainData.length === 0) return 0;
+     if (trainData.length === 0) return { loss: 0, g1: 0, g2: 0 };
      const m = trainData.length;
      optState.current.t += 1;
 
-     // 1. Setup Matrices
      const X = new Matrix(m, 2, trainData.map(p => [p.x, p.y]));
      const Y = new Matrix(m, 1, trainData.map(p => [p.label]));
-     const hSize = W1.current.cols;
+     const hSize = W1.current.cols; 
 
-     // 2. Forward Pass
      const Z1_data = [];
      const dotXW1 = np.dot(X, W1.current);
      for(let i=0; i<m; i++) {
          const row = [];
-         for(let j=0; j<hSize; j++) row.push(dotXW1.data[i][j] + b1.current.data[0][j]);
+         for(let j=0; j<hSize; j++) {
+             const rowVal = (dotXW1.data[i] && dotXW1.data[i][j] !== undefined) ? dotXW1.data[i][j] : 0;
+             if (b1.current.data && b1.current.data[0] && b1.current.data[0][j] !== undefined) {
+                 row.push(rowVal + b1.current.data[0][j]);
+             } else {
+                 row.push(rowVal);
+             }
+         }
          Z1_data.push(row);
      }
      const Z1_mat = new Matrix(m, hSize, Z1_data);
@@ -205,10 +229,10 @@ export const NeuralNetworkModule: React.FC = () => {
      else if (activation === 'sigmoid') A1 = np.sigmoid(Z1_mat);
      else A1 = np.tanh(Z1_mat);
 
-     const Z2 = np.add(np.dot(A1, W2.current), b2.current.data[0][0]);
+     const b2Val = (b2.current.data && b2.current.data[0] && b2.current.data[0][0] !== undefined) ? b2.current.data[0][0] : 0;
+     const Z2 = np.add(np.dot(A1, W2.current), b2Val);
      const A2 = np.sigmoid(Z2);
 
-     // 3. Loss & Gradients
      let currentLoss = np.binaryCrossEntropy(Y, A2);
      currentLoss += (regLambda / (2 * m)) * (W1.current.square().sum() + W2.current.square().sum());
 
@@ -227,11 +251,14 @@ export const NeuralNetworkModule: React.FC = () => {
      
      const db1_data = Array(hSize).fill(0);
      for(let i=0; i<m; i++) {
-         for(let j=0; j<hSize; j++) db1_data[j] += dZ1.data[i][j];
+         if (dZ1.data[i]) {
+             for(let j=0; j<hSize; j++) {
+                 if (dZ1.data[i][j] !== undefined) db1_data[j] += dZ1.data[i][j];
+             }
+         }
      }
      const db1 = new Matrix(1, hSize, [db1_data.map(x => x/m)]);
 
-     // 4. Optimization Step
      const upW1 = applyOptimizer(W1.current, dW1, optState.current.mW1, optState.current.vW1);
      W1.current = upW1.newParam; optState.current.mW1 = upW1.newM; optState.current.vW1 = upW1.newV;
 
@@ -245,10 +272,24 @@ export const NeuralNetworkModule: React.FC = () => {
      const upB2 = applyOptimizer(b2.current, db2Mat, optState.current.mb2, optState.current.vb2);
      b2.current = upB2.newParam; optState.current.mb2 = upB2.newM; optState.current.vb2 = upB2.newV;
      
-     return currentLoss;
+     const g1 = Math.sqrt(dW1.square().sum() / (dW1.rows * dW1.cols));
+     const g2 = Math.sqrt(dW2.square().sum() / (dW2.rows * dW2.cols));
+
+     return { loss: currentLoss, g1, g2 };
   };
 
-  // Metric Calculation Helper
+  const updateWeightHist = () => {
+      const weights = [...W1.current.toArray(), ...W2.current.toArray()];
+      const bins = Array(21).fill(0);
+      const labels = Array(21).fill(0).map((_, i) => ((i-10)*0.2).toFixed(1));
+      weights.forEach(w => {
+          const binIdx = Math.min(20, Math.max(0, Math.floor((w + 2) / 0.2)));
+          bins[binIdx]++;
+      });
+      setWeightDist(bins.map((count, i) => ({ bin: labels[i], count })));
+  };
+
+  // Metric Calculation Helper - Updated with safer access
   const updateMetrics = () => {
      const testData = allData.filter(p => p.isTest);
      if (testData.length > 0) {
@@ -259,17 +300,24 @@ export const NeuralNetworkModule: React.FC = () => {
          const dotXW1_t = np.dot(X_t, W1.current);
          for(let i=0; i<testData.length; i++) {
              const row = [];
-             for(let j=0; j<hSize; j++) row.push(dotXW1_t.data[i][j] + b1.current.data[0][j]);
+             for(let j=0; j<hSize; j++) {
+                 const bias = (b1.current.data && b1.current.data[0] && b1.current.data[0][j] !== undefined) ? b1.current.data[0][j] : 0;
+                 const dotVal = (dotXW1_t.data[i] && dotXW1_t.data[i][j] !== undefined) ? dotXW1_t.data[i][j] : 0;
+                 row.push(dotVal + bias);
+             }
              Z1_t_data.push(row);
          }
          const Z1_t = new Matrix(testData.length, hSize, Z1_t_data);
          let A1_t = activation === 'relu' ? np.relu(Z1_t) : activation === 'sigmoid' ? np.sigmoid(Z1_t) : np.tanh(Z1_t);
-         const Z2_t = np.add(np.dot(A1_t, W2.current), b2.current.data[0][0]);
+         const b2Val = (b2.current.data && b2.current.data[0] && b2.current.data[0][0] !== undefined) ? b2.current.data[0][0] : 0;
+         const Z2_t = np.add(np.dot(A1_t, W2.current), b2Val);
          const A2_t = np.sigmoid(Z2_t);
 
          let tp = 0, tn = 0, fp = 0, fn = 0;
          for(let i=0; i<testData.length; i++) {
-             const pred = A2_t.data[i][0] > 0.5 ? 1 : 0;
+             // Strict safety check for row existence
+             const predVal = (A2_t.data && A2_t.data[i] && A2_t.data[i][0] !== undefined) ? A2_t.data[i][0] : 0;
+             const pred = predVal > 0.5 ? 1 : 0;
              const actual = testData[i].label;
              if (pred === 1 && actual === 1) tp++;
              if (pred === 0 && actual === 0) tn++;
@@ -287,21 +335,34 @@ export const NeuralNetworkModule: React.FC = () => {
      }
   };
 
-  // Animation Loop
+  // ... (Animation Loop same as before) ...
   useEffect(() => {
     const animate = () => {
         if (!isPlaying) return;
         
-        // Run math loop multiple times for speed
         let lastLoss = 0;
+        let g1Sum = 0, g2Sum = 0;
+        
         for(let i=0; i<speed; i++) {
-            lastLoss = computeGradientStep(allData);
+            const res = computeGradientStep(allData);
+            lastLoss = res.loss;
+            g1Sum += res.g1;
+            g2Sum += res.g2;
         }
         
-        // Update UI Once
         setLoss(lastLoss);
-        setEpoch(e => e + speed);
+        setEpoch(e => {
+            const newE = e + speed;
+            setGradHistory(prev => {
+                const h = [...prev, { epoch: newE, layer1: g1Sum/speed, layer2: g2Sum/speed }];
+                return h.length > 50 ? h.slice(h.length-50) : h; 
+            });
+            return newE;
+        });
         updateMetrics();
+        
+        if (epoch % 10 === 0) updateWeightHist(); 
+        
         drawNetwork(W1.current.cols);
         drawDecisionBoundary();
 
@@ -312,18 +373,21 @@ export const NeuralNetworkModule: React.FC = () => {
         requestRef.current = requestAnimationFrame(animate);
     }
     return () => { if(requestRef.current) cancelAnimationFrame(requestRef.current); }
-  }, [isPlaying, allData, learningRate, regLambda, activation, optimizer, speed]);
+  }, [isPlaying, allData, learningRate, regLambda, activation, optimizer, speed, epoch]);
 
-  // Manual Step Button
+  // ... (stepForward same as before) ...
   const stepForward = () => {
-      const l = computeGradientStep(allData);
-      setLoss(l);
+      const res = computeGradientStep(allData);
+      setLoss(res.loss);
       setEpoch(e => e + 1);
+      setGradHistory(prev => [...prev, { epoch: epoch+1, layer1: res.g1, layer2: res.g2 }]);
       updateMetrics();
+      updateWeightHist();
       drawNetwork(W1.current.cols);
       drawDecisionBoundary();
   };
 
+  // ... (saveExperiment same as before) ...
   const saveExperiment = () => {
       const newRec: ExperimentRecord = {
           id: Date.now(),
@@ -340,7 +404,7 @@ export const NeuralNetworkModule: React.FC = () => {
       setExperiments(prev => [newRec, ...prev]);
   };
 
-  // --- Drawing Functions ---
+  // ... (drawDecisionBoundary same as before) ...
   const drawDecisionBoundary = () => {
       const canvas = heatmapCanvasRef.current;
       if (!canvas) return;
@@ -351,16 +415,15 @@ export const NeuralNetworkModule: React.FC = () => {
       const res = 25;
       const cellW = width / res;
       const cellH = height / res;
-      const hSize = W1.current.cols;
+      const hSize = W1.current.cols; 
+      
+      if (!b1.current || b1.current.cols !== hSize) return;
 
-      // Adjust for zoom: Map canvas pixels to coordinate space with zoom
-      // Default [-1.5, 1.5]. Zoom 2 -> [-0.75, 0.75]
       const bound = 1.5 / zoom;
       
       const inputs = [];
       for(let r=0; r<res; r++) {
           for(let c=0; c<res; c++) {
-              // Map r,c to x,y in domain
               const x = ((c/res) * 2 * bound) - bound;
               const y = -(((r/res) * 2 * bound) - bound);
               inputs.push([x, y]);
@@ -371,16 +434,21 @@ export const NeuralNetworkModule: React.FC = () => {
       const dotXW1 = np.dot(X, W1.current);
       for(let i=0; i<dotXW1.rows; i++) {
             const row = [];
-            for(let j=0; j<dotXW1.cols; j++) row.push(dotXW1.data[i][j] + b1.current.data[0][j]);
+            for(let j=0; j<dotXW1.cols; j++) {
+                const bias = (b1.current.data && b1.current.data[0] && b1.current.data[0][j] !== undefined) ? b1.current.data[0][j] : 0;
+                const dotVal = (dotXW1.data[i] && dotXW1.data[i][j] !== undefined) ? dotXW1.data[i][j] : 0;
+                row.push(dotVal + bias);
+            }
             Z1_data.push(row);
       }
       const Z1 = new Matrix(inputs.length, hSize, Z1_data);
       let A1 = activation === 'relu' ? np.relu(Z1) : activation === 'sigmoid' ? np.sigmoid(Z1) : np.tanh(Z1);
-      const Z2 = np.add(np.dot(A1, W2.current), b2.current.data[0][0]);
+      const b2Val = (b2.current.data && b2.current.data[0] && b2.current.data[0][0] !== undefined) ? b2.current.data[0][0] : 0;
+      const Z2 = np.add(np.dot(A1, W2.current), b2Val);
       const A2 = np.sigmoid(Z2);
 
       for(let i=0; i<inputs.length; i++) {
-          const prob = A2.data[i][0];
+          const prob = (A2.data && A2.data[i] && A2.data[i][0] !== undefined) ? A2.data[i][0] : 0.5;
           const r = Math.floor(i/res);
           const c = i%res;
           ctx.fillStyle = prob < 0.5 
@@ -391,9 +459,10 @@ export const NeuralNetworkModule: React.FC = () => {
       }
   };
 
+  // ... (drawNetwork same as before) ...
   const drawNetwork = (hSize: number) => {
       if (!svgRef.current) return;
-      const svg = d3.select(svgRef.current);
+      const svg = select(svgRef.current);
       svg.selectAll("*").remove(); 
       const width = svgRef.current.clientWidth;
       const height = svgRef.current.clientHeight;
@@ -403,10 +472,19 @@ export const NeuralNetworkModule: React.FC = () => {
       for(let i=0; i<inputSize; i++) nodes.push({ id: `i${i}`, x: layerX[0], y: (height / (inputSize+1)) * (i+1), layer: 0 });
       for(let i=0; i<hSize; i++) nodes.push({ id: `h${i}`, x: layerX[1], y: (height / (hSize+1)) * (i+1), layer: 1 });
       nodes.push({ id: `o0`, x: layerX[2], y: height/2, layer: 2 });
-      for(let i=0; i<inputSize; i++) for(let h=0; h<hSize; h++) 
-          links.push({ source: nodes[i], target: nodes[inputSize + h], weight: W1.current.data[i][h] });
-      for(let h=0; h<hSize; h++) 
-          links.push({ source: nodes[inputSize + h], target: nodes[inputSize + hSize], weight: W2.current.data[h][0] });
+      
+      if (W1.current.cols === hSize) {
+          for(let i=0; i<inputSize; i++) for(let h=0; h<hSize; h++) {
+              const w = (W1.current.data[i] && W1.current.data[i][h] !== undefined) ? W1.current.data[i][h] : 0;
+              links.push({ source: nodes[i], target: nodes[inputSize + h], weight: w });
+          }
+      }
+      if (W2.current.rows === hSize) {
+          for(let h=0; h<hSize; h++) {
+              const w = (W2.current.data[h] && W2.current.data[h][0] !== undefined) ? W2.current.data[h][0] : 0;
+              links.push({ source: nodes[inputSize + h], target: nodes[inputSize + hSize], weight: w });
+          }
+      }
 
       svg.append("g").selectAll("line").data(links).enter().append("line")
         .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
@@ -423,8 +501,10 @@ export const NeuralNetworkModule: React.FC = () => {
   useEffect(() => { 
       drawNetwork(hiddenSize); 
       drawDecisionBoundary(); 
+      updateWeightHist();
   }, []);
 
+  // ... Return JSX ...
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full overflow-y-auto">
       {/* LEFT COLUMN */}
@@ -447,6 +527,10 @@ export const NeuralNetworkModule: React.FC = () => {
                     <div className="flex items-center justify-between">
                         <label className="text-xs text-slate-400 flex items-center gap-2"><Grid size={14}/> Density ({dataDensity})</label>
                         <input type="range" min="50" max="500" step="50" value={dataDensity} onChange={(e) => setDataDensity(parseInt(e.target.value))} className="w-24 accent-indigo-500 h-1"/>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <label className="text-xs text-slate-400 flex items-center gap-2">Seed: {seed}</label>
+                        <input type="number" value={seed} onChange={(e) => setSeed(parseInt(e.target.value))} className="w-20 bg-slate-800 text-xs border border-slate-600 rounded px-1 text-white"/>
                     </div>
                 </div>
 
@@ -549,28 +633,74 @@ export const NeuralNetworkModule: React.FC = () => {
       {/* RIGHT COLUMN */}
       <div className="lg:col-span-8 flex flex-col gap-6">
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[400px]">
-            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 relative flex flex-col">
-                <svg ref={svgRef} className="w-full flex-1 cursor-crosshair"></svg>
-            </div>
-            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 relative overflow-hidden">
-                <div className="absolute inset-0 z-0">
-                    <canvas ref={heatmapCanvasRef} width={300} height={300} className="w-full h-full opacity-50 blur-[2px]" />
-                </div>
-                <ResponsiveContainer width="100%" height="100%" className="z-10 relative">
-                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-                        <XAxis dataKey="x" type="number" domain={[-1.5/zoom, 1.5/zoom]} hide />
-                        <YAxis dataKey="y" type="number" domain={[-1.5/zoom, 1.5/zoom]} hide />
-                        <Scatter data={allData} shape={(props: any) => (
-                            <circle cx={props.cx} cy={props.cy} r={(props.payload.isTest ? 4 : 3) * zoom} 
-                                fill={props.payload.label === 0 ? '#ef4444' : '#3b82f6'} 
-                                stroke="white" strokeWidth={props.payload.isTest ? 1.5 : 0} 
-                                fillOpacity={props.payload.isTest ? 0.6 : 1}
-                            />
-                        )} />
-                    </ScatterChart>
-                </ResponsiveContainer>
-            </div>
+             {activeTab === 'visuals' ? (
+                 <>
+                    <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 relative flex flex-col">
+                        <div className="absolute top-2 right-2 flex gap-2 z-10">
+                             <button onClick={() => setActiveTab('diagnostics')} className="p-1 bg-slate-700 text-slate-300 rounded hover:bg-slate-600" title="Diagnostics"><Microscope size={16}/></button>
+                        </div>
+                        <svg ref={svgRef} className="w-full flex-1 cursor-crosshair"></svg>
+                    </div>
+                    <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 relative overflow-hidden">
+                        <div className="absolute inset-0 z-0">
+                            <canvas ref={heatmapCanvasRef} width={300} height={300} className="w-full h-full opacity-50 blur-[2px]" />
+                        </div>
+                        <ResponsiveContainer width="100%" height="100%" className="z-10 relative">
+                            <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
+                                <XAxis dataKey="x" type="number" domain={[-1.5/zoom, 1.5/zoom]} hide />
+                                <YAxis dataKey="y" type="number" domain={[-1.5/zoom, 1.5/zoom]} hide />
+                                <Scatter data={allData} shape={(props: any) => (
+                                    <circle cx={props.cx} cy={props.cy} r={(props.payload.isTest ? 4 : 3) * zoom} 
+                                        fill={props.payload.label === 0 ? '#ef4444' : '#3b82f6'} 
+                                        stroke="white" strokeWidth={props.payload.isTest ? 1.5 : 0} 
+                                        fillOpacity={props.payload.isTest ? 0.6 : 1}
+                                    />
+                                )} />
+                            </ScatterChart>
+                        </ResponsiveContainer>
+                    </div>
+                 </>
+             ) : (
+                 <>
+                     {/* Gradient Flow Chart */}
+                     <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col relative">
+                        <div className="absolute top-2 right-2 flex gap-2 z-10">
+                             <button onClick={() => setActiveTab('visuals')} className="p-1 bg-slate-700 text-slate-300 rounded hover:bg-slate-600" title="Visuals"><Layers size={16}/></button>
+                        </div>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Gradient Flow (Vanishing Gradient Check)</h3>
+                        <div className="flex-1 min-h-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={gradHistory}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155"/>
+                                    <XAxis dataKey="epoch" stroke="#94a3b8" fontSize={10}/>
+                                    <YAxis stroke="#94a3b8" fontSize={10}/>
+                                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }}/>
+                                    <Legend />
+                                    <Line type="monotone" dataKey="layer1" stroke="#8884d8" dot={false} name="Layer 1 Grad" />
+                                    <Line type="monotone" dataKey="layer2" stroke="#82ca9d" dot={false} name="Layer 2 Grad" />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                     </div>
+                     
+                     {/* Weight Histogram */}
+                     <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col">
+                         <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Weight Distribution</h3>
+                         <div className="flex-1 min-h-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={weightDist}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155"/>
+                                    <XAxis dataKey="bin" stroke="#94a3b8" fontSize={10}/>
+                                    <YAxis stroke="#94a3b8" fontSize={10}/>
+                                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }}/>
+                                    <Bar dataKey="count" fill="#60a5fa" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                         </div>
+                     </div>
+                 </>
+             )}
          </div>
 
          <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden flex-1 min-h-[200px]">

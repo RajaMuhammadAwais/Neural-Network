@@ -72,9 +72,12 @@ export const ClusteringModule: React.FC = () => {
   };
 
   const handleAddPoint = (e: any) => {
-      if (e && e.activeCoordinate) {
+      // Safety check: Ensure payload exists and has data before accessing index 0
+      if (e && e.activeCoordinate && e.activePayload && e.activePayload.length > 0) {
           setPoints([...points, { x: e.activeLabel, y: e.activePayload[0].value }]); 
-          // Note: Recharts onClick is tricky for arbitrary coords, relying on preset data for now or "add random"
+      } else if (e && e.activeCoordinate) {
+          // Fallback if payload is missing but coordinate exists (unlikely for scatter but safe)
+           setPoints([...points, { x: Math.random()*100, y: Math.random()*100 }]);
       }
   };
   
@@ -130,7 +133,7 @@ export const ClusteringModule: React.FC = () => {
 
        <div className="lg:col-span-2 bg-slate-800 p-4 rounded-xl border border-slate-700 h-[500px] relative">
            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }} onClick={handleAddPoint}>
                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                  <XAxis type="number" dataKey="x" domain={[0, 100]} hide />
                  <YAxis type="number" dataKey="y" domain={[0, 100]} hide />

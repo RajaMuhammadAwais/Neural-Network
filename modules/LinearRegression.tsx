@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Matrix, np } from '../utils/math';
-import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Line, ComposedChart, Legend } from 'recharts';
+import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Line, ComposedChart, Legend, BarChart, Bar, ReferenceLine, Cell } from 'recharts';
 import { MathDisplay } from '../components/MathDisplay';
-import { Play, Pause, SkipForward, RefreshCw, BarChart2, AlertTriangle, Calculator, Edit3, Gauge, ZoomIn, Grid, Settings } from 'lucide-react';
+import { Play, Pause, SkipForward, RefreshCw, BarChart2, AlertTriangle, Calculator, Edit3, Gauge, ZoomIn, Grid, Settings, Microscope } from 'lucide-react';
 
 type LossType = 'MSE' | 'MAE';
 type RegType = 'None' | 'L1' | 'L2';
@@ -31,6 +31,7 @@ export const LinearRegressionModule: React.FC = () => {
   const [regType, setRegType] = useState<RegType>('None');
   const [showDataEditor, setShowDataEditor] = useState(false);
   const [dataInput, setDataInput] = useState("");
+  const [seed, setSeed] = useState(12345); // Research Seed
   
   // New View Controls
   const [playbackSpeed, setPlaybackSpeed] = useState(1); // Iterations per frame
@@ -41,16 +42,19 @@ export const LinearRegressionModule: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const generateData = useCallback(() => {
+    np.seed(seed); // Enforce Reproducibility
     const newPoints = [];
     // Generate dataCount points spread across 0-10
     for (let i = 0; i < dataCount; i++) {
       const x = (i / dataCount) * 10; 
-      const y = 2 * x + 1 + (Math.random() * noiseLevel * 2 - noiseLevel); 
+      // Use seeded random generator through np/Matrix helper or just simple equation for now
+      const randomVal = (np.randomNormal(1,1,0,1).data[0][0]); // Using seeded normal
+      const y = 2 * x + 1 + (randomVal * noiseLevel); 
       newPoints.push({ x, y, residual: 0 });
     }
     setPoints(newPoints);
     resetModel();
-  }, [noiseLevel, dataCount]);
+  }, [noiseLevel, dataCount, seed]);
 
   const resetModel = () => {
     const startW = Math.random() * 4;
@@ -98,7 +102,15 @@ export const LinearRegressionModule: React.FC = () => {
     const ssRes = points.reduce((sum, p) => sum + Math.pow(p.y - (w * p.x + b), 2), 0);
     const r2 = 1 - (ssRes / ssTot);
     setRSquared(r2);
+    
+    // Update residuals in points state (without triggering loop, just for visualization derivation)
+    // Actually, best to compute derived state in render or useEffect for chart
   }, [w, b, points]); 
+  
+  const residualsData = points.map(p => ({
+      x: p.x,
+      residual: p.y - (w * p.x + b)
+  }));
 
   // Draw Landscape
   useEffect(() => {
@@ -112,7 +124,6 @@ export const LinearRegressionModule: React.FC = () => {
     const height = canvas.height;
     
     // Calculate bounds based on zoom level
-    // Center around roughly W=2, B=1.5 which is the "expected" area for the default generator
     const wCenter = 2;
     const bCenter = 1.5;
     const wSpan = 4 / zoomLevel;
@@ -198,10 +209,8 @@ export const LinearRegressionModule: React.FC = () => {
           sumXX += p.x * p.x;
       }
       // Add Ridge (L2) penalty diagonal roughly if enabled (Simplified for 1D)
-      // Normal Eq with Ridge: (X'X + lambda*I)^-1 X'y
-      // Denom becomes sumXX + lambda
       let denom = (n * sumXX - sumX * sumX);
-      if (regType === 'L2') denom += regRate * n; // Approximate adjustment for demo
+      if (regType === 'L2') denom += regRate * n; 
 
       const m = (n * sumXY - sumX * sumY) / denom;
       const intercept = (sumY - m * sumX) / n;
@@ -219,7 +228,6 @@ export const LinearRegressionModule: React.FC = () => {
       setPathHistory(prev => [...prev, { w: m, b: intercept }]);
   };
 
-  // The math logic, decoupled from UI state, uses Refs
   const performTrainingStep = () => {
     if (points.length === 0) return null;
     
@@ -238,11 +246,9 @@ export const LinearRegressionModule: React.FC = () => {
         
         if (lossType === 'MSE') {
             totalLoss += error * error;
-            dw += error * p.x; // d/dw (yHat-y)^2 = 2(yHat-y)x. (ignoring 2/m factor for now, applying in LR)
+            dw += error * p.x; 
             db += error;
         } else {
-            // MAE: |yHat - y|
-            // d/dw = sign(yHat - y) * x
             totalLoss += Math.abs(error);
             const sign = error > 0 ? 1 : error < 0 ? -1 : 0;
             dw += sign * p.x;
@@ -260,16 +266,11 @@ export const LinearRegressionModule: React.FC = () => {
         totalLoss /= m;
     }
 
-    // Regularization Gradients
     if (regType === 'L2') {
-        // Ridge: + lambda * w^2
-        // Deriv: + 2 * lambda * w
         dw += 2 * regRate * currentW;
         totalLoss += regRate * currentW * currentW;
     }
     if (regType === 'L1') {
-        // Lasso: + lambda * |w|
-        // Deriv: + lambda * sign(w)
         dw += regRate * (currentW > 0 ? 1 : -1);
         totalLoss += regRate * Math.abs(currentW);
     }
@@ -290,12 +291,10 @@ export const LinearRegressionModule: React.FC = () => {
     const animate = () => {
         if (!isPlaying || solverMode !== 'iterative') return;
 
-        // Run physics multiple times based on speed
         for(let i=0; i<playbackSpeed; i++) {
             lastResult = performTrainingStep();
         }
 
-        // Update UI once per frame
         if (lastResult) {
             setW(lastResult.w);
             setB(lastResult.b);
@@ -421,8 +420,14 @@ export const LinearRegressionModule: React.FC = () => {
                 )}
                 
                 <div>
-                    <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Data Noise</label>
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1 block flex justify-between">
+                        <span>Data Noise</span>
+                        <span>Seed: {seed}</span>
+                    </label>
                     <input type="range" min="0" max="5" step="0.5" value={noiseLevel} onChange={(e) => setNoiseLevel(parseFloat(e.target.value))} className="w-full accent-indigo-500"/>
+                    <div className="flex justify-end mt-1">
+                         <input type="number" value={seed} onChange={(e) => setSeed(parseInt(e.target.value))} className="w-20 bg-slate-900 border border-slate-600 text-xs text-white rounded px-1"/>
+                    </div>
                 </div>
                 
                 <div className="bg-slate-900 p-3 rounded border border-indigo-500/30 flex items-center justify-between">
@@ -461,25 +466,54 @@ export const LinearRegressionModule: React.FC = () => {
       </div>
 
       <div className="lg:col-span-2 space-y-6">
-        <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 h-[400px] relative">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="x" type="number" domain={xDomain} allowDataOverflow stroke="#94a3b8" />
-              <YAxis dataKey="y" type="number" domain={['auto', 'auto']} stroke="#94a3b8" />
-              <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }} itemStyle={{ color: '#fff' }}/>
-              <Legend />
-              <Scatter name="Data" data={points} fill="#818cf8" />
-              <Line name="Regression" data={regressionLine} dataKey="y" stroke="#f472b6" strokeWidth={3} dot={false} animationDuration={0} />
-            </ComposedChart>
-          </ResponsiveContainer>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[400px]">
+            {/* Main Plot */}
+            <div className="lg:col-span-2 bg-slate-800 p-4 rounded-xl border border-slate-700 relative">
+                <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="x" type="number" domain={xDomain} allowDataOverflow stroke="#94a3b8" />
+                    <YAxis dataKey="y" type="number" domain={['auto', 'auto']} stroke="#94a3b8" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }} itemStyle={{ color: '#fff' }}/>
+                    <Legend />
+                    <Scatter name="Data" data={points} fill="#818cf8" />
+                    <Line name="Regression" data={regressionLine} dataKey="y" stroke="#f472b6" strokeWidth={3} dot={false} animationDuration={0} />
+                    </ComposedChart>
+                </ResponsiveContainer>
+            </div>
+
+            {/* Residual Plot (Scientist Upgrade) */}
+            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col">
+                 <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><Microscope size={14}/> Residual Analysis</h3>
+                 <div className="flex-1 min-h-0">
+                     <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={residualsData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false}/>
+                            <XAxis dataKey="x" type="number" domain={[0, 10]} hide/>
+                            <YAxis stroke="#94a3b8" fontSize={10}/>
+                            <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff', fontSize: '12px' }}/>
+                            <ReferenceLine y={0} stroke="#fff" strokeOpacity={0.5}/>
+                            <Bar dataKey="residual" fill="#ef4444" radius={[2, 2, 0, 0]}>
+                                {residualsData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.residual > 0 ? '#34d399' : '#f87171'} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                     </ResponsiveContainer>
+                 </div>
+                 <p className="text-[10px] text-slate-500 mt-2">
+                     Patterns in residuals indicate heteroscedasticity or non-linearity. Random scatter is ideal.
+                 </p>
+            </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 h-[250px] flex flex-col">
             <h3 className="text-sm font-semibold text-slate-400 mb-2 shrink-0">Cost Surface Descent</h3>
-            <div className="w-full flex-1 relative bg-black rounded overflow-hidden min-h-0">
-                 <canvas ref={canvasRef} width={300} height={200} className="w-full h-full object-fill" />
+            <div className="w-full flex-1 relative bg-black rounded overflow-hidden min-h-0 flex flex-col">
+                 <div className="flex-1 relative min-h-0">
+                     <canvas ref={canvasRef} width={300} height={200} className="w-full h-full object-fill" />
+                 </div>
             </div>
           </div>
           <div className="bg-slate-900 p-4 rounded-xl border border-indigo-500/30 h-[250px] overflow-y-auto">

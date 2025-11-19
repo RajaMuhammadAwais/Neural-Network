@@ -146,11 +146,11 @@ export const MultivariableModule: React.FC = () => {
              newY = prev.y - (lr * 2) * m_hat_dy / (Math.sqrt(v_hat_dy) + epsilon);
          }
          
-         // Bounds Check
-         if (Math.abs(newX) > 4 || Math.abs(newY) > 4) {
-            setIsRolling(false);
-            return prev;
-         }
+         // Bounds Check (Clamping)
+         // If the optimization shoots off to infinity, hard clamp it to the visible area
+         // This simulates "Gradient Clipping" or prevents NaN in the visualization
+         if (Math.abs(newX) > 4.5) newX = Math.sign(newX) * 4.5;
+         if (Math.abs(newY) > 4.5) newY = Math.sign(newY) * 4.5;
 
          // Stop condition
          if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {

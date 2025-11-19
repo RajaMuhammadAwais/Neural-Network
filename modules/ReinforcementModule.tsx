@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { np } from '../utils/math';
 import { MathDisplay } from '../components/MathDisplay';
@@ -13,9 +15,20 @@ type Action = 0 | 1 | 2 | 3; // Up, Down, Left, Right
 const ACTIONS = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // dr, dc
 
 export const ReinforcementModule: React.FC = () => {
-    // State
+    // State for Rendering
     const [agentPos, setAgentPos] = useState({ r: 0, c: 0 });
-    const [qTable, setQTable] = useState<number[][][]>([]); // [r][c][action]
+    
+    // Use Ref for Logic Loop (prevent stale closures)
+    // Initialize synchronously to prevent "undefined" errors during first render pass
+    const qTableRef = useRef<number[][][]>(
+        Array(GRID_SIZE).fill(0).map(() => 
+            Array(GRID_SIZE).fill(0).map(() => [0, 0, 0, 0])
+        )
+    );
+    
+    // State to force re-render
+    const [qTableVersion, setQTableVersion] = useState(0);
+
     const [episode, setEpisode] = useState(0);
     const [epsilon, setEpsilon] = useState(0.5); // Exploration rate
     const [isPlaying, setIsPlaying] = useState(false);
@@ -26,14 +39,6 @@ export const ReinforcementModule: React.FC = () => {
     const gamma = 0.9; // Discount Factor
 
     const timerRef = useRef<number>(0);
-
-    // Initialize Q-Table
-    useEffect(() => {
-        const qt = Array(GRID_SIZE).fill(0).map(() => 
-            Array(GRID_SIZE).fill(0).map(() => [0, 0, 0, 0])
-        );
-        setQTable(qt);
-    }, []);
 
     const getReward = (r: number, c: number) => {
         if (r === GOAL.r && c === GOAL.c) return 10;
@@ -58,25 +63,21 @@ export const ReinforcementModule: React.FC = () => {
             if (Math.random() < epsilon) {
                 action = Math.floor(Math.random() * 4); // Explore
             } else {
-                action = np.argmax(qTable[r][c]); // Exploit
+                // Read from Ref to get latest data
+                action = np.argmax(qTableRef.current[r][c]); // Exploit
             }
 
             const nextR = Math.max(0, Math.min(GRID_SIZE - 1, r + ACTIONS[action][0]));
             const nextC = Math.max(0, Math.min(GRID_SIZE - 1, c + ACTIONS[action][1]));
             
             const reward = getReward(nextR, nextC);
-            const maxNextQ = Math.max(...qTable[nextR][nextC]);
+            const maxNextQ = Math.max(...qTableRef.current[nextR][nextC]);
             
-            // Update Q-Value: Q(s,a) = Q(s,a) + alpha * [R + gamma * maxQ(s',a') - Q(s,a)]
-            setQTable(prevQ => {
-                const newQ = [...prevQ]; // Shallow copy (nested arrays need deeper copy logic if mutating deeply but this works for React trigger)
-                newQ[r] = [...newQ[r]]; // Copy row
-                newQ[r][c] = [...newQ[r][c]]; // Copy cell
-                
-                const currentQ = newQ[r][c][action];
-                newQ[r][c][action] = currentQ + alpha * (reward + gamma * maxNextQ - currentQ);
-                return newQ;
-            });
+            // Update Q-Value directly in Ref
+            const currentQ = qTableRef.current[r][c][action];
+            qTableRef.current[r][c][action] = currentQ + alpha * (reward + gamma * maxNextQ - currentQ);
+            
+            setQTableVersion(v => v + 1);
 
             return { r: nextR, c: nextC };
         });
@@ -87,11 +88,12 @@ export const ReinforcementModule: React.FC = () => {
             timerRef.current = window.setInterval(step, speed);
         }
         return () => clearInterval(timerRef.current);
-    }, [isPlaying, speed, epsilon, qTable]);
+    }, [isPlaying, speed, epsilon]);
 
     const getColor = (r: number, c: number) => {
+        if (!qTableRef.current || qTableRef.current.length === 0) return 'rgba(30, 41, 59, 0.5)';
         // Color cell based on Max Q-Value
-        const maxQ = Math.max(...qTable[r][c]);
+        const maxQ = Math.max(...qTableRef.current[r][c]);
         // Range approx -10 to 10
         const norm = Math.max(-1, Math.min(1, maxQ / 10));
         
@@ -104,11 +106,15 @@ export const ReinforcementModule: React.FC = () => {
     };
 
     const getArrow = (r: number, c: number) => {
+        if (!qTableRef.current || qTableRef.current.length === 0) return null;
         if (isTerminal(r, c)) return null;
-        const bestAct = np.argmax(qTable[r][c]);
+        const bestAct = np.argmax(qTableRef.current[r][c]);
         const arrows = ['↑', '↓', '←', '→'];
         return arrows[bestAct];
     };
+    
+    // Force re-render when version changes
+    const qTable = qTableRef.current; 
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full overflow-y-auto">
@@ -133,7 +139,8 @@ export const ReinforcementModule: React.FC = () => {
                                 {isPlaying ? "Pause" : "Start Training"}
                             </button>
                             <button onClick={() => { 
-                                setQTable(Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(0).map(() => [0, 0, 0, 0])));
+                                qTableRef.current = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(0).map(() => [0, 0, 0, 0]));
+                                setQTableVersion(v => v+1);
                                 setEpisode(0);
                                 setAgentPos(START);
                             }} className="px-3 bg-slate-700 rounded-lg text-white">
@@ -167,7 +174,7 @@ export const ReinforcementModule: React.FC = () => {
                     className="grid gap-1"
                     style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 60px)`, gridTemplateRows: `repeat(${GRID_SIZE}, 60px)` }}
                 >
-                    {qTable.map((row, r) => row.map((_, c) => {
+                    {qTableRef.current.length > 0 && qTableRef.current.map((row, r) => row.map((_, c) => {
                         const isAgent = agentPos.r === r && agentPos.c === c;
                         return (
                             <div 
