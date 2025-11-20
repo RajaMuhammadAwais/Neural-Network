@@ -27,8 +27,8 @@ jobs:
         id: get_version
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          echo "VERSION=$VERSION" &gt;&gt; $GITHUB_ENV
-          echo "version=$VERSION" &gt;&gt; $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Fetch tags
         run: |
@@ -37,10 +37,10 @@ jobs:
       - name: Check if tag already exists
         id: check_tag
         run: |
-          if git rev-parse "v${VERSION}" &gt;/dev/null 2&gt;&amp;1; then
-            echo "exists=true" &gt;&gt; $GITHUB_OUTPUT
+          if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
           else
-            echo "exists=false" &gt;&gt; $GITHUB_OUTPUT
+            echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Create and push tag
