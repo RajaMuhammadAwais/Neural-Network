@@ -52,33 +52,37 @@ export const AIHelper: React.FC<AIHelperProps> = ({ contextData, moduleName }) =
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div className="fixed bottom-4 right-4 z-40 max-w-[90vw]">
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white p-4 rounded-full shadow-lg transition-all hover:scale-110 flex items-center justify-center group"
+          className="bg-indigo-600 hover:bg-indigo-500 text-white p-3 md:p-4 rounded-full shadow-lg transition-all hover:scale-110 flex items-center justify-center group"
+          aria-label="Open AI Tutor"
         >
-          <Sparkles className="w-6 h-6 group-hover:animate-spin" />
+          <Sparkles className="w-5 h-5 md:w-6 md:h-6 group-hover:animate-spin" />
         </button>
       )}
 
       {isOpen && (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg shadow-2xl w-80 flex flex-col overflow-hidden">
-          <div className="bg-indigo-600 p-3 flex justify-between items-center">
+        <div
+          className="bg-slate-800 border border-slate-700 rounded-lg shadow-2xl w-[20rem] sm:w-[22rem] md:w-[24rem] max-w-[90vw] flex flex-col overflow-hidden resize"
+          style={{ maxHeight: '80vh' }}
+        >
+          <div className="bg-indigo-600 p-2 md:p-3 flex justify-between items-center">
             <h3 className="text-white font-semibold flex items-center gap-2">
               <Sparkles className="w-4 h-4" /> Gemini Tutor
             </h3>
-            <button onClick={() => setIsOpen(false)} className="text-indigo-200 hover:text-white">
+            <button onClick={() => setIsOpen(false)} className="text-indigo-200 hover:text-white" aria-label="Close AI Tutor">
               <X className="w-5 h-5" />
             </button>
           </div>
           
-          <div className="p-4 text-sm text-slate-300 min-h-[150px] max-h-[300px] overflow-y-auto">
+          <div className="p-3 md:p-4 text-sm text-slate-300 min-h-[140px] max-h-[60vh] overflow-y-auto">
             {!response && !loading && !error && (
               <p>Click below to get an analysis of your current training run.</p>
             )}
             {loading && (
-              <div className="flex flex-col items-center justify-center py-8 text-indigo-400">
+              <div className="flex flex-col items-center justify-center py-8 text-indigo-200">
                 <Loader2 className="w-8 h-8 animate-spin mb-2" />
                 <span>Thinking...</span>
               </div>
@@ -87,7 +91,7 @@ export const AIHelper: React.FC<AIHelperProps> = ({ contextData, moduleName }) =
             {response && <p className="leading-relaxed">{response}</p>}
           </div>
 
-          <div className="p-3 bg-slate-900 border-t border-slate-700">
+          <div className="p-2 md:p-3 bg-slate-900 border-t border-slate-700">
             <button
               onClick={handleAsk}
               disabled={loading}
