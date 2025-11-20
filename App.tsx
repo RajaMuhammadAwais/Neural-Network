@@ -11,7 +11,6 @@ import { ClusteringModule } from './modules/ClusteringModule';
 import { SVMModule } from './modules/SVMModule';
 import { ReinforcementModule } from './modules/ReinforcementModule';
 import { Activity, TrendingUp, BrainCircuit, Sigma, Mountain, Dna, Grid3X3, Sparkles, Grip, ShieldCheck, Gamepad2 } from 'lucide-react';
-import { AIHelper } from './components/AIHelper';
 
 enum ActiveModule {
   LINEAR = 'linear',
@@ -27,7 +26,7 @@ enum ActiveModule {
 }
 
 function App() {
-  const [activeModule, setActiveModule] = useState<ActiveModule>(ActiveModule.NEURAL);
+  const [activeModule, setActiveModule] = useState<ActiveModule>(ActiveModule.LINEAR);
 
   const renderModule = () => {
     switch(activeModule) {
@@ -240,12 +239,7 @@ function App() {
           {renderModule()}
         </div>
 
-        {/* Context-Aware AI Helper */}
-        <AIHelper 
-          moduleName={title}
-          contextData={JSON.stringify({ activeModule, time: Date.now() })} 
-        />
-      </main>
+        </main>
     </div>
   );
 }
