@@ -10,7 +10,7 @@ import { TransformerModule } from './modules/TransformerModule';
 import { ClusteringModule } from './modules/ClusteringModule';
 import { SVMModule } from './modules/SVMModule';
 import { ReinforcementModule } from './modules/ReinforcementModule';
-import { Activity, TrendingUp, BrainCircuit, Sigma, Mountain, Dna, Grid3X3, Grip, ShieldCheck, Gamepad2 } from 'lucide-react';
+import { Activity, TrendingUp, BrainCircuit, Sigma, Mountain, Dna, Grid3X3, Sparkles, Grip, ShieldCheck, Gamepad2 } from 'lucide-react';
 import { AIHelper } from './components/AIHelper';
 
 enum ActiveModule {
@@ -77,9 +77,20 @@ function App() {
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          
-
-          
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 px-2">Supervised Learning</div>
+          <button
+            onClick={() => setActiveModule(ActiveModule.LINEAR)}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+              activeModule === ActiveModule.LINEAR 
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' 
+              : 'hover:bg-slate-800 text-slate-400'
+            }`}
+          >
+            <TrendingUp className="w-5 h-5" />
+            <div className="text-left">
+              <div className="font-medium">Linear Regression</div>
+            </div>
+          </button>
 
           <button
             onClick={() => setActiveModule(ActiveModule.SVM)}
