@@ -41,6 +41,17 @@ export const LinearRegressionModule: React.FC = () => {
   const requestRef = useRef<number>(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Robust formatting helpers
+  const isFiniteNumber = (n: number) => Number.isFinite(n) && !Number.isNaN(n);
+  const formatCompact = (n: number, digits = 4) => {
+    if (!isFiniteNumber(n)) return '—';
+    const abs = Math.abs(n);
+    if (abs === 0) return '0';
+    if (abs >= 1e6 || abs < 1e-3) return n.toExponential(3);
+    return n.toFixed(digits);
+  };
+  const clip = (v: number, limit = 1e6) => Math.max(-limit, Math.min(limit, v));
+
   const generateData = useCallback(() => {
     np.seed(seed); // Enforce Reproducibility
     const newPoints = [];
@@ -79,11 +90,15 @@ export const LinearRegressionModule: React.FC = () => {
 
   const parseDataInput = () => {
       const lines = dataInput.split('\n');
-      const newPoints = [];
+      const newPoints: { x: number; y: number; residual?: number }[] = [];
       for(const line of lines) {
           const parts = line.split(',').map(s => s.trim());
           if(parts.length === 2 && !isNaN(parseFloat(parts[0])) && !isNaN(parseFloat(parts[1]))) {
-              newPoints.push({ x: parseFloat(parts[0]), y: parseFloat(parts[1]), residual: 0 });
+              const px = parseFloat(parts[0]);
+              const py = parseFloat(parts[1]);
+              if (isFiniteNumber(px) && isFiniteNumber(py)) {
+                newPoints.push({ x: px, y: py, residual: 0 });
+              }
           }
       }
       if(newPoints.length > 1) {
@@ -99,18 +114,27 @@ export const LinearRegressionModule: React.FC = () => {
     if (points.length === 0) return;
     const meanY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
     const ssTot = points.reduce((sum, p) => sum + Math.pow(p.y - meanY, 2), 0);
+
+    // Guard against degenerate cases and non-finite values
+    if (!isFiniteNumber(ssTot) || ssTot === 0) {
+      setRSquared(0);
+      return;
+    }
+
     const ssRes = points.reduce((sum, p) => sum + Math.pow(p.y - (w * p.x + b), 2), 0);
     const r2 = 1 - (ssRes / ssTot);
-    setRSquared(r2);
+    setRSquared(isFiniteNumber(r2) ? r2 : 0);
     
     // Update residuals in points state (without triggering loop, just for visualization derivation)
     // Actually, best to compute derived state in render or useEffect for chart
   }, [w, b, points]); 
   
-  const residualsData = points.map(p => ({
+  const residualsData = points
+    .map(p => ({
       x: p.x,
       residual: p.y - (w * p.x + b)
-  }));
+    }))
+    .filter(d => isFiniteNumber(d.x) && isFiniteNumber(d.residual));
 
   // Draw Landscape
   useEffect(() => {
@@ -201,6 +225,8 @@ export const LinearRegressionModule: React.FC = () => {
 
   const solveAnalytical = () => {
       const n = points.length;
+      if (n === 0) return;
+
       let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
       for(const p of points) {
           sumX += p.x;
@@ -211,9 +237,11 @@ export const LinearRegressionModule: React.FC = () => {
       // Add Ridge (L2) penalty diagonal roughly if enabled (Simplified for 1D)
       let denom = (n * sumXX - sumX * sumX);
       if (regType === 'L2') denom += regRate * n; 
+      if (!isFiniteNumber(denom) || denom === 0) return;
 
       const m = (n * sumXY - sumX * sumY) / denom;
       const intercept = (sumY - m * sumX) / n;
+      if (!isFiniteNumber(m) || !isFiniteNumber(intercept)) return;
       
       setW(m);
       setB(intercept);
@@ -224,7 +252,9 @@ export const LinearRegressionModule: React.FC = () => {
       for(const p of points) ss += Math.pow(p.y - (m*p.x + intercept), 2);
       const mse = ss / n;
       
-      setLossHistory(prev => [...prev, { epoch: prev.length, loss: mse }]);
+      if (isFiniteNumber(mse)) {
+        setLossHistory(prev => [...prev, { epoch: prev.length, loss: mse }]);
+      }
       setPathHistory(prev => [...prev, { w: m, b: intercept }]);
   };
 
@@ -274,6 +304,10 @@ export const LinearRegressionModule: React.FC = () => {
         dw += regRate * (currentW > 0 ? 1 : -1);
         totalLoss += regRate * Math.abs(currentW);
     }
+
+    // Gradient clipping for robustness on extreme values
+    dw = clip(dw);
+    db = clip(db);
     
     const newW = currentW - learningRate * dw;
     const newB = currentB - learningRate * db;
@@ -281,7 +315,8 @@ export const LinearRegressionModule: React.FC = () => {
     wRef.current = newW;
     bRef.current = newB;
     
-    return { w: newW, b: newB, loss: totalLoss };
+    const safeLoss = isFiniteNumber(totalLoss) ? totalLoss : Number.POSITIVE_INFINITY;
+    return { w: newW, b: newB, loss: safeLoss };
   };
 
   // The loop that runs every frame
@@ -299,7 +334,9 @@ export const LinearRegressionModule: React.FC = () => {
             setW(lastResult.w);
             setB(lastResult.b);
             setEpoch(prev => prev + playbackSpeed);
-            setLossHistory(prev => [...prev, { epoch: prev.length + playbackSpeed, loss: lastResult.loss }]);
+            if (isFiniteNumber(lastResult.loss)) {
+              setLossHistory(prev => [...prev, { epoch: prev.length + playbackSpeed, loss: lastResult.loss }]);
+            }
             setPathHistory(prev => [...prev, { w: lastResult.w, b: lastResult.b }]);
         }
         
@@ -318,21 +355,23 @@ export const LinearRegressionModule: React.FC = () => {
         setW(res.w);
         setB(res.b);
         setEpoch(prev => prev + 1);
-        setLossHistory(prev => [...prev, { epoch: prev.length + 1, loss: res.loss }]);
+        if (isFiniteNumber(res.loss)) {
+          setLossHistory(prev => [...prev, { epoch: prev.length + 1, loss: res.loss }]);
+        }
         setPathHistory(prev => [...prev, { w: res.w, b: res.b }]);
       }
   };
 
-  const regressionLine = [{ x: 0, y: b }, { x: 10, y: w * 10 + b }];
+  const regressionLine = (isFiniteNumber(w) && isFiniteNumber(b)) ? [{ x: 0, y: b }, { x: 10, y: w * 10 + b }] : [];
   const xDomain: [number, number] = [5 - 5/zoomLevel, 5 + 5/zoomLevel];
 
   const getFormula = () => {
       let base = "";
-      if (lossType === 'MSE') base = "L = \\frac{1}{m}\\sum (\\hat{y}-y)^2";
-      else base = "L = \\frac{1}{m}\\sum |\\hat{y}-y|";
+      if (lossType === 'MSE') base = "L = \\\\frac{1}{m}\\\\sum (\\\\hat{y}-y)^2";
+      else base = "L = \\\\frac{1}{m}\\\\sum |\\\\hat{y}-y|";
       
-      if (regType === 'L2') base += " + \\lambda w^2";
-      if (regType === 'L1') base += " + \\lambda |w|";
+      if (regType === 'L2') base += " + \\\\lambda w^2";
+      if (regType === 'L1') base += " + \\\\lambda |w|";
       return base;
   };
 
@@ -455,11 +494,11 @@ export const LinearRegressionModule: React.FC = () => {
             <div className="grid grid-cols-2 gap-4">
                 <div className="bg-slate-900 p-3 rounded text-center">
                     <div className="text-xs text-slate-500 uppercase">R-Squared</div>
-                    <div className={`text-xl font-mono font-bold ${rSquared > 0.8 ? 'text-green-400' : rSquared > 0.5 ? 'text-yellow-400' : 'text-red-400'}`}>{rSquared.toFixed(4)}</div>
+                    <div className={`text-xl font-mono font-bold ${rSquared > 0.8 ? 'text-green-400' : rSquared > 0.5 ? 'text-yellow-400' : 'text-red-400'}`}>{formatCompact(rSquared)}</div>
                 </div>
                 <div className="bg-slate-900 p-3 rounded text-center">
                     <div className="text-xs text-slate-500 uppercase">{lossType} Loss</div>
-                    <div className="text-xl font-mono font-bold text-red-400">{lossHistory.length > 0 ? lossHistory[lossHistory.length-1].loss.toFixed(3) : '0.0'}</div>
+                    <div className="text-xl font-mono font-bold text-red-400">{lossHistory.length > 0 ? formatCompact(lossHistory[lossHistory.length-1].loss, 3) : '0.0'}</div>
                 </div>
             </div>
         </div>
@@ -472,12 +511,14 @@ export const LinearRegressionModule: React.FC = () => {
                 <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                    <XAxis dataKey="x" type="number" domain={xDomain} allowDataOverflow stroke="#94a3b8" />
-                    <YAxis dataKey="y" type="number" domain={['auto', 'auto']} stroke="#94a3b8" />
+                    <XAxis dataKey="x" type="number" domain={xDomain} allowDataOverflow stroke="#94a3b8" tickFormatter={(v) => formatCompact(v as number, 2)} />
+                    <YAxis dataKey="y" type="number" domain={['auto', 'auto']} stroke="#94a3b8" tickFormatter={(v) => formatCompact(v as number, 2)} />
                     <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }} itemStyle={{ color: '#fff' }}/>
                     <Legend />
                     <Scatter name="Data" data={points} fill="#818cf8" />
-                    <Line name="Regression" data={regressionLine} dataKey="y" stroke="#f472b6" strokeWidth={3} dot={false} animationDuration={0} />
+                    {regressionLine.length > 0 && (
+                      <Line name="Regression" data={regressionLine} dataKey="y" stroke="#f472b6" strokeWidth={3} dot={false} animationDuration={0} />
+                    )}
                     </ComposedChart>
                 </ResponsiveContainer>
             </div>
@@ -490,7 +531,7 @@ export const LinearRegressionModule: React.FC = () => {
                         <BarChart data={residualsData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false}/>
                             <XAxis dataKey="x" type="number" domain={[0, 10]} hide/>
-                            <YAxis stroke="#94a3b8" fontSize={10}/>
+                            <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(v) => formatCompact(v as number, 2)}/>
                             <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff', fontSize: '12px' }}/>
                             <ReferenceLine y={0} stroke="#fff" strokeOpacity={0.5}/>
                             <Bar dataKey="residual" fill="#ef4444" radius={[2, 2, 0, 0]}>
@@ -533,7 +574,7 @@ export const LinearRegressionModule: React.FC = () => {
                 )}
                 <div>
                   <p className="text-xs text-slate-500 mb-1">Current Model</p>
-                  <MathDisplay formula={`\\hat{y} = ${w.toFixed(2)}x + ${b.toFixed(2)}`} />
+                  <MathDisplay formula={`\\hat{y} = ${formatCompact(w)}x + ${formatCompact(b)}`} />
                   <p className="text-xs text-slate-500 mb-1 mt-2">Loss Function</p>
                   <MathDisplay formula={getFormula()} className="text-yellow-400"/>
                 </div>
