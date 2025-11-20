@@ -12,8 +12,10 @@ import { SVMModule } from './modules/SVMModule';
 import { ReinforcementModule } from './modules/ReinforcementModule';
 import { Activity, TrendingUp, BrainCircuit, Sigma, Mountain, Dna, Grid3X3, Sparkles, Grip, ShieldCheck, Gamepad2 } from 'lucide-react';
 import { AIHelper } from './components/AIHelper';
+import { ResponsiveSite } from './components/ResponsiveSite';
 
 enum ActiveModule {
+  SITE = 'site',
   LINEAR = 'linear',
   NEURAL = 'neural',
   SVM = 'svm',
@@ -31,6 +33,7 @@ function App() {
 
   const renderModule = () => {
     switch(activeModule) {
+      case ActiveModule.SITE: return <ResponsiveSite />;
       case ActiveModule.LINEAR: return <LinearRegressionModule />;
       case ActiveModule.NEURAL: return <NeuralNetworkModule />;
       case ActiveModule.SVM: return <SVMModule />;
@@ -47,6 +50,7 @@ function App() {
 
   const getTitle = () => {
      switch(activeModule) {
+      case ActiveModule.SITE: return { title: 'Responsive Website', subtitle: 'Fluid layouts, scalable typography, and adaptive components' };
       case ActiveModule.LINEAR: return { title: 'Linear Regression', subtitle: 'Supervised Learning Foundations' };
       case ActiveModule.NEURAL: return { title: 'Neural Networks', subtitle: 'Deep Learning Lab & Backpropagation' };
       case ActiveModule.SVM: return { title: 'Support Vector Machine', subtitle: 'Max Margin Classification & Kernels' };
@@ -76,6 +80,21 @@ function App() {
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 px-2">Showcase</div>
+          <button
+            onClick={() => setActiveModule(ActiveModule.SITE)}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+              activeModule === ActiveModule.SITE 
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' 
+              : 'hover:bg-slate-800 text-slate-400'
+            }`}
+          >
+            <Sparkles className="w-5 h-5" />
+            <div className="text-left">
+              <div className="font-medium">Responsive Website</div>
+            </div>
+          </button>
+
           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 px-2">Supervised Learning</div>
           <button
             onClick={() => setActiveModule(ActiveModule.LINEAR)}
@@ -226,7 +245,7 @@ function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-6 h-screen overflow-y-auto relative">
+      <main className="flex-1 p-6 overflow-y-auto relative min-h-screen">
         <header className="mb-6 shrink-0">
           <h2 className="text-3xl font-light text-white">
             {title}
@@ -236,7 +255,7 @@ function App() {
           </p>
         </header>
 
-        <div className="h-full pb-20">
+        <div className="pb-20">
           {renderModule()}
         </div>
 

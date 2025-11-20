@@ -506,7 +506,7 @@ export const NeuralNetworkModule: React.FC = () => {
 
   // ... Return JSX ...
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full overflow-y-auto">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 overflow-visible">
       {/* LEFT COLUMN */}
       <div className="lg:col-span-4 space-y-6">
         <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
