@@ -64,7 +64,7 @@ function App() {
   const { title, subtitle } = getTitle();
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-slate-950 text-slate-200 font-sans overflow-hidden">
+    <div className="min-h-screen flex flex-col md:flex-row bg-slate-950 text-slate-200 font-sans overflow-auto">
       
       {/* Sidebar */}
       <aside className="w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-10 overflow-y-auto shrink-0">

@@ -26,6 +26,25 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #64748b; 
       }
+
+      /* Overlay utility: fit within viewport with margins on all sides */
+      .overlay-fit {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        bottom: 1rem;
+        left: 1rem;
+        max-width: calc(100vw - 2rem);
+        max-height: calc(100vh - 2rem);
+        overflow: auto;
+        z-index: 40;
+      }
+
+      /* Dropdown containment helper (for custom dropdowns) */
+      .dropdown-fit {
+        max-height: 70vh;
+        overflow: auto;
+      }
     </style>
   <script type="importmap">
 {
