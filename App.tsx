@@ -66,7 +66,7 @@ function App() {
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-950 text-slate-200 font-sans overflow-hidden">
       
       {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-10 overflow-y-auto shrink-0">
+      <aside className="w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-10 overflow-hidden shrink-0">
         <div className="p-6 border-b border-slate-800">
           <h1 className="text-2xl font-bold text-indigo-400 flex items-center gap-2">
             <Activity className="w-6 h-6" /> NeuralVis
@@ -225,7 +225,7 @@ function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-6 h-screen overflow-y-auto relative">
+      <main className="flex-1 p-6 min-h-screen overflow-y-auto relative">
         <header className="mb-6 shrink-0">
           <h2 className="text-3xl font-light text-white">
             {title}
@@ -235,7 +235,7 @@ function App() {
           </p>
         </header>
 
-        <div className="h-full pb-20">
+        <div className="h-full">
           {renderModule()}
         </div>
 
