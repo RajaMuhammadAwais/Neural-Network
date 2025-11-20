@@ -6,6 +6,10 @@
 ![GitHub top language](https://img.shields.io/github/languages/top/RajaMuhammadAwais/NeuralVis)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 
+## ⭐ GitHub Stars Over Time
+
+[![Star History Chart](https://api.star-history.com/svg?repos=RajaMuhammadAwais/NeuralVis&amp;type=Date)](https://star-history.com/#RajaMuhammadAwais/NeuralVis)
+
 ## 🧠 Overview
 
 **NeuralVis** is an interactive, web-based **AI Research Simulator** designed to visualize and demystify complex concepts in **Machine Learning** and **Advanced Mathematics**. Built with a modern React and TypeScript stack, it provides a hands-on environment for exploring the mechanics of various algorithms, from foundational linear regression to cutting-edge transformer models and multivariable calculus.
