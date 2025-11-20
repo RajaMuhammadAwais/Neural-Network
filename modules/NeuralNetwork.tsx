@@ -506,7 +506,7 @@ export const NeuralNetworkModule: React.FC = () => {
 
   // ... Return JSX ...
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 overflow-visible">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full overflow-y-auto">
       {/* LEFT COLUMN */}
       <div className="lg:col-span-4 space-y-6">
         <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
@@ -516,34 +516,23 @@ export const NeuralNetworkModule: React.FC = () => {
             <div className="space-y-5">
                 {/* Control Bar */}
                 <div className="bg-slate-900 p-3 rounded border border-slate-600 space-y-3">
-                            <div className="flex items-center justify-between">
-                                <label className="text-xs text-slate-400 flex items-center gap-2"><Gauge size={14}/> Speed ({speed}x)</label>
-                                <input type="range" min="1" max="10" step="1" value={speed} onChange={(e) => setSpeed(parseInt(e.target.value))} className="w-24 accent-indigo-500 h-1"/>
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <label className="text-xs text-slate-400 flex items-center gap-2"><ZoomIn size={14}/> Zoom ({zoom}x)</label>
-                                <input type="range" min="0.5" max="3" step="0.1" value={zoom} onChange={(e) => { setZoom(parseFloat(e.target.value)); setTimeout(drawDecisionBoundary, 10); }} className="w-24 accent-indigo-500 h-1"/>
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <label className="text-xs text-slate-400 flex items-center gap-2"><Grid size={14}/> Density ({dataDensity})</label>
-                                <input type="range" min="50" max="500" step="50" value={dataDensity} onChange={(e) => setDataDensity(parseInt(e.target.value))} className="w-24 accent-indigo-500 h-1"/>
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <label className="text-xs text-slate-400 flex items-center gap-2">Seed: {seed}</label>
-                                <input type="number" value={seed} onChange={(e) => setSeed(parseInt(e.target.value))} className="w-20 bg-slate-800 text-xs border border-slate-600 rounded px-1 text-white"/>
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <label className="text-xs text-slate-400 flex items-center gap-2"><Layers size={14}/> Panel View</label>
-                                <select
-                                    value={activeTab}
-                                    onChange={(e) => setActiveTab(e.target.value as 'visuals' | 'diagnostics')}
-                                    className="w-28 bg-slate-800 text-xs border border-slate-600 rounded px-1 py-1 text-white"
-                                >
-                                    <option value="visuals">Visuals</option>
-                                    <option value="diagnostics">Diagnostics</option>
-                                </select>
-                            </div>
-                        </div>
+                    <div className="flex items-center justify-between">
+                        <label className="text-xs text-slate-400 flex items-center gap-2"><Gauge size={14}/> Speed ({speed}x)</label>
+                        <input type="range" min="1" max="10" step="1" value={speed} onChange={(e) => setSpeed(parseInt(e.target.value))} className="w-24 accent-indigo-500 h-1"/>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <label className="text-xs text-slate-400 flex items-center gap-2"><ZoomIn size={14}/> Zoom ({zoom}x)</label>
+                        <input type="range" min="0.5" max="3" step="0.1" value={zoom} onChange={(e) => { setZoom(parseFloat(e.target.value)); setTimeout(drawDecisionBoundary, 10); }} className="w-24 accent-indigo-500 h-1"/>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <label className="text-xs text-slate-400 flex items-center gap-2"><Grid size={14}/> Density ({dataDensity})</label>
+                        <input type="range" min="50" max="500" step="50" value={dataDensity} onChange={(e) => setDataDensity(parseInt(e.target.value))} className="w-24 accent-indigo-500 h-1"/>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <label className="text-xs text-slate-400 flex items-center gap-2">Seed: {seed}</label>
+                        <input type="number" value={seed} onChange={(e) => setSeed(parseInt(e.target.value))} className="w-20 bg-slate-800 text-xs border border-slate-600 rounded px-1 text-white"/>
+                    </div>
+                </div>
 
                 <div>
                     <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">1. Data Source</label>
@@ -647,8 +636,11 @@ export const NeuralNetworkModule: React.FC = () => {
              {activeTab === 'visuals' ? (
                  <>
                     <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 relative flex flex-col">
-                            <svg ref={svgRef} className="w-full flex-1 cursor-crosshair"></svg>
+                        <div className="absolute top-2 right-2 flex gap-2 z-10">
+                             <button onClick={() => setActiveTab('diagnostics')} className="p-1 bg-slate-700 text-slate-300 rounded hover:bg-slate-600" title="Diagnostics"><Microscope size={16}/></button>
                         </div>
+                        <svg ref={svgRef} className="w-full flex-1 cursor-crosshair"></svg>
+                    </div>
                     <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 relative overflow-hidden">
                         <div className="absolute inset-0 z-0">
                             <canvas ref={heatmapCanvasRef} width={300} height={300} className="w-full h-full opacity-50 blur-[2px]" />
@@ -673,6 +665,9 @@ export const NeuralNetworkModule: React.FC = () => {
                  <>
                      {/* Gradient Flow Chart */}
                      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col relative">
+                        <div className="absolute top-2 right-2 flex gap-2 z-10">
+                             <button onClick={() => setActiveTab('visuals')} className="p-1 bg-slate-700 text-slate-300 rounded hover:bg-slate-600" title="Visuals"><Layers size={16}/></button>
+                        </div>
                         <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Gradient Flow (Vanishing Gradient Check)</h3>
                         <div className="flex-1 min-h-0">
                             <ResponsiveContainer width="100%" height="100%">
