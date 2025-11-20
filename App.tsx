@@ -26,7 +26,7 @@ enum ActiveModule {
 }
 
 function App() {
-  const [activeModule, setActiveModule] = useState<ActiveModule>(ActiveModule.NEURAL);
+  const [activeModule, setActiveModule] = useState<ActiveModule>(ActiveModule.LINEAR);
 
   const renderModule = () => {
     switch(activeModule) {
