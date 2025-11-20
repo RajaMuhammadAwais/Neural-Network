@@ -226,7 +226,7 @@ function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-6 h-screen overflow-y-auto relative">
+      <main className="flex-1 p-6 overflow-y-auto relative min-h-screen">
         <header className="mb-6 shrink-0">
           <h2 className="text-3xl font-light text-white">
             {title}
@@ -236,7 +236,7 @@ function App() {
           </p>
         </header>
 
-        <div className="h-full pb-20">
+        <div className="pb-20">
           {renderModule()}
         </div>
 
