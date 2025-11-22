@@ -1,0 +1,105 @@
+name: Auto-assign milestones for issues and PRs
+
+on:
+  issues:
+    types: [opened, labeled]
+  pull_request:
+    types: [opened, labeled, reopened, ready_for_review]
+  # Allow manual runs
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  auto-milestone:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Auto assign milestone based on labels
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const isIssue = !!context.payload.issue;
+            const isPr = !!context.payload.pull_request;
+
+            if (!isIssue &amp;&amp; !isPr) {
+              core.info('Not an issue or PR event, skipping.');
+              return;
+            }
+
+            // Get the current item (issue or PR) and its labels
+            const item = isIssue ? context.payload.issue : context.payload.pull_request;
+            const labels = item.labels || [];
+
+            // Strategy:
+            // - Look for labels that start with "milestone:" (case-insensitive), e.g. "milestone: v1.0"
+            // - The text after "milestone:" becomes the milestone title
+            const milestoneLabel = labels.find(label =&gt; {
+              const name = (typeof label === 'string' ? label : label.name) || '';
+              return name.toLowerCase().startsWith('milestone:');
+            });
+
+            if (!milestoneLabel) {
+              core.info('No milestone:* label found, nothing to do.');
+              return;
+            }
+
+            const rawName = typeof milestoneLabel === 'string' ? milestoneLabel : milestoneLabel.name;
+            const milestoneTitle = rawName.split(':').slice(1).join(':').trim();
+
+            if (!milestoneTitle) {
+              core.info(`Label "${rawName}" does not contain a milestone name after "milestone:", skipping.`);
+              return;
+            }
+
+            core.info(`Requested milestone title: "${milestoneTitle}"`);
+
+            const { owner, repo } = context.repo;
+
+            // Fetch existing milestones
+            const milestones = await github.paginate(
+              github.rest.issues.listMilestones,
+              { owner, repo, state: 'all', per_page: 100 }
+            );
+
+            let milestone = milestones.find(m =&gt; m.title.toLowerCase() === milestoneTitle.toLowerCase());
+
+            // Create milestone if it doesn't exist
+            if (!milestone) {
+              core.info(`Milestone "${milestoneTitle}" not found, creating it.`);
+              const created = await github.rest.issues.createMilestone({
+                owner,
+                repo,
+                title: milestoneTitle
+              });
+              milestone = created.data;
+            } else {
+              core.info(`Found existing milestone "${milestone.title}" (id: ${milestone.number})`);
+            }
+
+            if (!milestone) {
+              core.warning('Could not resolve or create milestone, aborting.');
+              return;
+            }
+
+            // Assign milestone to issue or PR
+            if (isIssue) {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: item.number,
+                milestone: milestone.number
+              });
+              core.info(`Milestone "${milestone.title}" assigned to issue #${item.number}.`);
+            } else {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: item.number, // PRs use the issues API for milestones
+                milestone: milestone.number
+              });
+              core.info(`Milestone "${milestone.title}" assigned to PR #${item.number}.`);
+            }
